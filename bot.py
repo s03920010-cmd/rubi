@@ -13,22 +13,28 @@ from rubpy.bot.models import Update
 
 TOKEN = "CCFDJD0NTXGROTMRYNTFWCULTGQFIMGSSUQXHXJFGYBVXYAJWJRTNMSKUGAOLOJT"
 
-DB_FILE = "database.json"
+DATABASE_FILE = "database.json"
 
 app = BotClient(TOKEN)
 
 
 # =========================================================
-# دیتابیس
+# دیتابیس پیش‌فرض
 # =========================================================
 
-DEFAULT_DB = {
+DATABASE_DEFAULT = {
     "owner_id": None,
+
     "admins": [],
+
     "groups": {},
+
     "residents": {},
+
     "expenses": [],
+
     "payments": {},
+
     "charge": {
         "day": 1,
         "amount": 0,
@@ -37,28 +43,51 @@ DEFAULT_DB = {
 }
 
 
+# =========================================================
+# دیتابیس
+# =========================================================
+
 def load_database():
-    if not os.path.exists(DB_FILE):
-        save_database(DEFAULT_DB)
-        return DEFAULT_DB.copy()
+
+    if not os.path.exists(DATABASE_FILE):
+
+        save_database(DATABASE_DEFAULT)
+
+        return DATABASE_DEFAULT.copy()
 
     try:
-        with open(DB_FILE, "r", encoding="utf-8") as file:
+
+        with open(
+            DATABASE_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+
             data = json.load(file)
 
-        for key, value in DEFAULT_DB.items():
+        for key, value in DATABASE_DEFAULT.items():
+
             if key not in data:
+
                 data[key] = value
 
         return data
 
     except Exception:
-        save_database(DEFAULT_DB)
-        return DEFAULT_DB.copy()
+
+        save_database(DATABASE_DEFAULT)
+
+        return DATABASE_DEFAULT.copy()
 
 
 def save_database(data):
-    with open(DB_FILE, "w", encoding="utf-8") as file:
+
+    with open(
+        DATABASE_FILE,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
         json.dump(
             data,
             file,
@@ -71,59 +100,52 @@ db = load_database()
 
 
 # =========================================================
-# ابزارهای کمکی
+# ابزارها
 # =========================================================
 
 def زمان():
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return datetime.now().strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
 
 
 def ماه_فعلی():
-    return datetime.now().strftime("%Y-%m")
+
+    return datetime.now().strftime(
+        "%Y-%m"
+    )
 
 
 def شناسه_کاربر(update):
+
     try:
-        return str(update.new_message.sender_id)
+
+        return str(
+            update.new_message.sender_id
+        )
+
     except Exception:
+
         return None
 
 
 def متن(update):
+
     try:
-        return (update.new_message.text or "").strip()
+
+        return (
+            update.new_message.text or ""
+        ).strip()
+
     except Exception:
+
         return ""
 
 
-def مدیر_است(user_id):
-    if not user_id:
-        return False
+def عدد_فارسی(value):
 
-    user_id = str(user_id)
-
-    return (
-        str(db["owner_id"]) == user_id
-        or user_id in [str(x) for x in db["admins"]]
-    )
-
-
-def مالک_است(user_id):
-    if not user_id:
-        return False
-
-    return str(db["owner_id"]) == str(user_id)
-
-
-def مبلغ(عدد):
-    try:
-        return f"{int(عدد):,}"
-    except Exception:
-        return str(عدد)
-
-
-def عدد_فارسی_به_انگلیسی(value):
-    if not value:
+    if value is None:
         return ""
 
     return str(value).translate(
@@ -134,74 +156,115 @@ def عدد_فارسی_به_انگلیسی(value):
     )
 
 
+def پول(value):
+
+    try:
+
+        return f"{int(value):,}"
+
+    except Exception:
+
+        return str(value)
+
+
+def مدیر_است(user_id):
+
+    if not user_id:
+        return False
+
+    user_id = str(user_id)
+
+    if str(db["owner_id"]) == user_id:
+        return True
+
+    return user_id in [
+        str(x)
+        for x in db["admins"]
+    ]
+
+
+def مالک_است(user_id):
+
+    if not user_id:
+        return False
+
+    return str(
+        db["owner_id"]
+    ) == str(user_id)
+
+
 # =========================================================
-# لیست دستورات
+# راهنمای بات
 # =========================================================
 
-دستورات = """
-🏢 **بات ساختمان فدک**
+راهنما = """
+🏢 بات ساختمان فدک
 
 ━━━━━━━━━━━━━━━━━━
 
 📋 دستورات عمومی:
 
-/راهنما
+دستورات
 نمایش لیست دستورات
 
-/شارژ
+شارژ
 نمایش مبلغ و اطلاعات شارژ
 
-/هزینه‌ها
+هزینه‌ها
 نمایش تمام هزینه‌های ساختمان
 
-/پرداخت
+پرداخت
 ثبت پرداخت شارژ
 
 ━━━━━━━━━━━━━━━━━━
 
 👑 دستورات مدیریتی:
 
-/مدیر
-ثبت یا بررسی مدیر بات
+مدیر
+ثبت اولین مدیر و مالک بات
 
-/افزودن_مدیر
+افزودن مدیر
 افزودن مدیر جدید
 
-/حذف_مدیر
+حذف مدیر
 حذف مدیر
 
-/تنظیم_شارژ
+تنظیم شارژ
 تنظیم روز، مبلغ و شماره کارت
 
-/ثبت_هزینه
+ثبت هزینه
 ثبت هزینه ساختمان
 
-/ساکنین
+ساکنین
 نمایش لیست ساکنین
 
-/افزودن_ساکن
 افزودن ساکن
+ثبت ساکن جدید
 
-/حذف_ساکن
+حذف ساکن
 حذف ساکن
 
-/گزارش
+گزارش
 گزارش پرداخت و عدم پرداخت
 
 ━━━━━━━━━━━━━━━━━━
 
 ⚡ مدیریت سریع:
 
-روی پیام یک شخص ریپلای کنید و بنویسید:
+روی پیام شخص موردنظر ریپلای کنید و بنویسید:
 
 ادمین میتونه
 
 ━━━━━━━━━━━━━━━━━━
 
-📸 برای پرداخت شارژ:
+📸 پرداخت شارژ:
 
-رسید واریز را در PV بات ارسال کنید
-و همراه آن نام و نام خانوادگی خود را بنویسید.
+رسید واریز را برای بات در PV ارسال کنید.
+
+همراه رسید:
+نام و نام خانوادگی
+
+را نیز ارسال کنید.
 """
 
 
@@ -213,9 +276,11 @@ def عدد_فارسی_به_انگلیسی(value):
     filters.text("فعال"),
     filters.group
 )
-async def فعال_کردن(client, update: Update):
+async def فعال(client, update: Update):
 
-    chat_id = str(update.chat_id)
+    chat_id = str(
+        update.chat_id
+    )
 
     db["groups"][chat_id] = {
         "active": True,
@@ -225,50 +290,246 @@ async def فعال_کردن(client, update: Update):
     save_database(db)
 
     await update.reply(
-        "✅ بات ساختمان فدک فعال شد.\n\n" +
-        دستورات
+        "✅ بات ساختمان فدک فعال شد.\n\n"
+        + راهنما
     )
 
 
 # =========================================================
-# راهنما
+# دستورات عمومی بدون /
 # =========================================================
 
 @app.on_update(
-    filters.commands("راهنما")
+    filters.text,
+    filters.group
 )
-async def راهنما(client, update: Update):
+async def دستورات_گروه(
+    client,
+    update: Update
+):
 
-    await update.reply(دستورات)
+    message = متن(update)
+
+    if not message:
+        return
+
+    # -----------------------------------------
+    # دستورات عمومی
+    # -----------------------------------------
+
+    if message == "دستورات":
+
+        await update.reply(
+            راهنما
+        )
+
+        return
+
+    if message == "راهنما":
+
+        await update.reply(
+            راهنما
+        )
+
+        return
+
+    if message == "شارژ":
+
+        await نمایش_شارژ(
+            client,
+            update
+        )
+
+        return
+
+    if message == "هزینه‌ها":
+
+        await نمایش_هزینه‌ها(
+            client,
+            update
+        )
+
+        return
+
+    if message == "ساکنین":
+
+        await نمایش_ساکنین(
+            client,
+            update
+        )
+
+        return
+
+    if message == "گزارش":
+
+        await نمایش_گزارش(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # مدیر
+    # -----------------------------------------
+
+    if message == "مدیر":
+
+        await ثبت_مدیر(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # افزودن مدیر
+    # -----------------------------------------
+
+    if message.startswith(
+        "افزودن مدیر"
+    ):
+
+        await افزودن_مدیر(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # حذف مدیر
+    # -----------------------------------------
+
+    if message.startswith(
+        "حذف مدیر"
+    ):
+
+        await حذف_مدیر(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # تنظیم شارژ
+    # -----------------------------------------
+
+    if message.startswith(
+        "تنظیم شارژ"
+    ):
+
+        await تنظیم_شارژ(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # ثبت هزینه
+    # -----------------------------------------
+
+    if message.startswith(
+        "ثبت هزینه"
+    ):
+
+        await ثبت_هزینه(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # افزودن ساکن
+    # -----------------------------------------
+
+    if message.startswith(
+        "افزودن ساکن"
+    ):
+
+        await افزودن_ساکن(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # حذف ساکن
+    # -----------------------------------------
+
+    if message.startswith(
+        "حذف ساکن"
+    ):
+
+        await حذف_ساکن(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # پرداخت
+    # -----------------------------------------
+
+    if message.startswith(
+        "پرداخت"
+    ):
+
+        await ثبت_پرداخت(
+            client,
+            update
+        )
+
+        return
+
+    # -----------------------------------------
+    # ادمین با ریپلای
+    # -----------------------------------------
+
+    if message == "ادمین میتونه":
+
+        await ادمین_با_ریپلای(
+            client,
+            update
+        )
+
+        return
 
 
 # =========================================================
-# مدیر
+# ثبت مالک
 # =========================================================
 
-@app.on_update(
-    filters.commands("مدیر")
-)
-async def مدیر(client, update: Update):
+async def ثبت_مدیر(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
     if not user_id:
         return
 
-    # اولین نفری که /مدیر می‌زند مالک می‌شود
     if db["owner_id"] is None:
 
         db["owner_id"] = user_id
 
         if user_id not in db["admins"]:
-            db["admins"].append(user_id)
+
+            db["admins"].append(
+                user_id
+            )
 
         save_database(db)
 
         await update.reply(
-            "👑 شما به عنوان مالک اصلی بات ساختمان فدک ثبت شدید.\n\n"
-            "اکنون می‌توانید مدیران و تنظیمات ساختمان را مدیریت کنید."
+            "👑 مالک بات ثبت شد.\n\n"
+            "شما مالک اصلی بات ساختمان فدک هستید."
         )
 
         return
@@ -290,43 +551,49 @@ async def مدیر(client, update: Update):
 # افزودن مدیر
 # =========================================================
 
-@app.on_update(
-    filters.commands("افزودن_مدیر")
-)
-async def افزودن_مدیر(client, update: Update):
+async def افزودن_مدیر(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
     if not مالک_است(user_id):
 
         await update.reply(
-            "❌ فقط مالک اصلی بات می‌تواند مدیر اضافه کند."
+            "❌ فقط مالک اصلی می‌تواند مدیر اضافه کند."
         )
 
         return
 
-    متن_پیام = متن(update)
+    message = متن(update)
 
-    بخش‌ها = متن_پیام.split(maxsplit=1)
+    parts = message.split(
+        maxsplit=2
+    )
 
-    if len(بخش‌ها) < 2:
+    if len(parts) < 3:
 
         await update.reply(
-            "❌ روش استفاده:\n\n"
-            "/افزودن_مدیر شناسه_کاربر"
+            "❌ روش صحیح:\n\n"
+            "افزودن مدیر شناسه_کاربر"
         )
 
         return
 
-    هدف = بخش‌ها[1].strip()
+    target = parts[2].strip()
 
-    if هدف not in db["admins"]:
-        db["admins"].append(هدف)
+    if target not in db["admins"]:
 
-    save_database(db)
+        db["admins"].append(
+            target
+        )
+
+        save_database(db)
 
     await update.reply(
-        f"✅ کاربر {هدف} به مدیران اضافه شد."
+        "✅ مدیر جدید اضافه شد.\n\n"
+        f"شناسه: {target}"
     )
 
 
@@ -334,10 +601,10 @@ async def افزودن_مدیر(client, update: Update):
 # حذف مدیر
 # =========================================================
 
-@app.on_update(
-    filters.commands("حذف_مدیر")
-)
-async def حذف_مدیر(client, update: Update):
+async def حذف_مدیر(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
@@ -349,22 +616,26 @@ async def حذف_مدیر(client, update: Update):
 
         return
 
-    متن_پیام = متن(update)
+    message = متن(update)
 
-    بخش‌ها = متن_پیام.split(maxsplit=1)
+    parts = message.split(
+        maxsplit=2
+    )
 
-    if len(بخش‌ها) < 2:
+    if len(parts) < 3:
 
         await update.reply(
-            "❌ روش استفاده:\n\n"
-            "/حذف_مدیر شناسه_کاربر"
+            "❌ روش صحیح:\n\n"
+            "حذف مدیر شناسه_کاربر"
         )
 
         return
 
-    هدف = بخش‌ها[1].strip()
+    target = parts[2].strip()
 
-    if هدف == str(db["owner_id"]):
+    if target == str(
+        db["owner_id"]
+    ):
 
         await update.reply(
             "❌ مالک اصلی را نمی‌توان حذف کرد."
@@ -372,24 +643,33 @@ async def حذف_مدیر(client, update: Update):
 
         return
 
-    if هدف in db["admins"]:
-        db["admins"].remove(هدف)
+    if target in db["admins"]:
 
-    save_database(db)
+        db["admins"].remove(
+            target
+        )
 
-    await update.reply(
-        "✅ مدیر حذف شد."
-    )
+        save_database(db)
+
+        await update.reply(
+            "✅ مدیر حذف شد."
+        )
+
+    else:
+
+        await update.reply(
+            "❌ این کاربر مدیر نیست."
+        )
 
 
 # =========================================================
 # تنظیم شارژ
 # =========================================================
 
-@app.on_update(
-    filters.commands("تنظیم_شارژ")
-)
-async def تنظیم_شارژ(client, update: Update):
+async def تنظیم_شارژ(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
@@ -401,47 +681,56 @@ async def تنظیم_شارژ(client, update: Update):
 
         return
 
-    متن_پیام = متن(update)
+    message = متن(update)
 
-    بخش‌ها = متن_پیام.split()
+    parts = message.split()
 
-    if len(بخش‌ها) < 4:
+    if len(parts) < 4:
 
         await update.reply(
-            "❌ روش استفاده:\n\n"
-            "/تنظیم_شارژ روز مبلغ شماره_کارت\n\n"
+            "❌ روش صحیح:\n\n"
+            "تنظیم شارژ روز مبلغ شماره_کارت\n\n"
             "مثال:\n"
-            "/تنظیم_شارژ 1 500000 6037991234567890"
+            "تنظیم شارژ 1 500000 6037991234567890"
         )
 
         return
 
     try:
 
-        روز = int(
-            عدد_فارسی_به_انگلیسی(بخش‌ها[1])
+        day = int(
+            عدد_فارسی(
+                parts[2]
+            )
         )
 
-        مقدار = int(
-            عدد_فارسی_به_انگلیسی(بخش‌ها[2])
+        amount = int(
+            عدد_فارسی(
+                parts[3]
+            )
         )
 
-        کارت = عدد_فارسی_به_انگلیسی(بخش‌ها[3])
+        card = عدد_فارسی(
+            parts[4]
+        )
 
-        if روز < 1 or روز > 31:
+        if day < 1 or day > 31:
+
             raise ValueError
 
-        db["charge"]["day"] = روز
-        db["charge"]["amount"] = مقدار
-        db["charge"]["card"] = کارت
+        db["charge"]["day"] = day
+
+        db["charge"]["amount"] = amount
+
+        db["charge"]["card"] = card
 
         save_database(db)
 
         await update.reply(
-            "✅ شارژ ساختمان تنظیم شد.\n\n"
-            f"📅 روز پرداخت: {روز} هر ماه\n"
-            f"💰 مبلغ: {مبلغ(مقدار)} تومان\n"
-            f"💳 شماره کارت:\n{کارت}"
+            "✅ شارژ تنظیم شد.\n\n"
+            f"📅 روز: {day} هر ماه\n"
+            f"💰 مبلغ: {پول(amount)} تومان\n"
+            f"💳 کارت:\n{card}"
         )
 
     except Exception:
@@ -455,21 +744,21 @@ async def تنظیم_شارژ(client, update: Update):
 # نمایش شارژ
 # =========================================================
 
-@app.on_update(
-    filters.commands("شارژ")
-)
-async def نمایش_شارژ(client, update: Update):
+async def نمایش_شارژ(
+    client,
+    update
+):
 
-    شارژ = db["charge"]
+    charge = db["charge"]
 
     await update.reply(
-        "🏢 **اطلاعات شارژ ساختمان فدک**\n\n"
-        f"📅 روز پرداخت: {شارژ['day']} هر ماه\n"
-        f"💰 مبلغ: {مبلغ(شارژ['amount'])} تومان\n"
+        "🏢 اطلاعات شارژ ساختمان فدک\n\n"
+        f"📅 روز پرداخت: {charge['day']} هر ماه\n"
+        f"💰 مبلغ: {پول(charge['amount'])} تومان\n"
         f"💳 شماره کارت:\n"
-        f"{شارژ['card']}\n\n"
-        "📸 بعد از واریز، رسید را در PV بات ارسال کنید.\n"
-        "👤 نام و نام خانوادگی خود را نیز ارسال کنید."
+        f"{charge['card']}\n\n"
+        "📸 پس از واریز رسید را در PV بات ارسال کنید.\n"
+        "👤 نام و نام خانوادگی خود را نیز بنویسید."
     )
 
 
@@ -477,10 +766,10 @@ async def نمایش_شارژ(client, update: Update):
 # ثبت هزینه
 # =========================================================
 
-@app.on_update(
-    filters.commands("ثبت_هزینه")
-)
-async def ثبت_هزینه(client, update: Update):
+async def ثبت_هزینه(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
@@ -492,69 +781,76 @@ async def ثبت_هزینه(client, update: Update):
 
         return
 
-    متن_پیام = متن(update)
+    message = متن(update)
 
-    بخش‌ها = متن_پیام.split(maxsplit=1)
-
-    if len(بخش‌ها) < 2:
+    if "|" not in message:
 
         await update.reply(
-            "❌ روش استفاده:\n\n"
-            "/ثبت_هزینه عنوان | مبلغ\n\n"
+            "❌ روش صحیح:\n\n"
+            "ثبت هزینه عنوان | مبلغ\n\n"
             "مثال:\n"
-            "/ثبت_هزینه تعمیر آسانسور | 2500000"
+            "ثبت هزینه تعمیر آسانسور | 2500000"
         )
 
         return
 
     try:
 
-        عنوان, مقدار = بخش‌ها[1].split("|", 1)
+        data = message[
+            len("ثبت هزینه"):
+        ].strip()
 
-        عنوان = عنوان.strip()
+        title, amount = data.split(
+            "|",
+            1
+        )
 
-        مقدار = int(
-            عدد_فارسی_به_انگلیسی(
-                مقدار.strip()
+        title = title.strip()
+
+        amount = int(
+            عدد_فارسی(
+                amount.strip()
             )
         )
 
-        هزینه = {
-            "title": عنوان,
-            "amount": مقدار,
+        expense = {
+            "title": title,
+            "amount": amount,
             "created_by": user_id,
             "created_at": زمان()
         }
 
-        db["expenses"].append(هزینه)
+        db["expenses"].append(
+            expense
+        )
 
         save_database(db)
 
         await update.reply(
-            "✅ هزینه با موفقیت ثبت شد.\n\n"
-            f"📌 عنوان: {عنوان}\n"
-            f"💰 مبلغ: {مبلغ(مقدار)} تومان"
+            "✅ هزینه ثبت شد.\n\n"
+            f"📌 عنوان: {title}\n"
+            f"💰 مبلغ: {پول(amount)} تومان"
         )
 
     except Exception:
 
         await update.reply(
-            "❌ فرمت واردشده اشتباه است."
+            "❌ اطلاعات هزینه صحیح نیست."
         )
 
 
 # =========================================================
-# لیست هزینه‌ها
+# نمایش هزینه‌ها
 # =========================================================
 
-@app.on_update(
-    filters.commands("هزینه‌ها")
-)
-async def هزینه_ها(client, update: Update):
+async def نمایش_هزینه‌ها(
+    client,
+    update
+):
 
-    هزینه‌ها = db["expenses"]
+    expenses = db["expenses"]
 
-    if not هزینه‌ها:
+    if not expenses:
 
         await update.reply(
             "📋 هنوز هیچ هزینه‌ای ثبت نشده است."
@@ -562,45 +858,47 @@ async def هزینه_ها(client, update: Update):
 
         return
 
-    متن_خروجی = (
-        "💰 **لیست هزینه‌های ساختمان فدک**\n\n"
+    result = (
+        "💰 هزینه‌های ساختمان فدک\n\n"
     )
 
-    جمع = 0
+    total = 0
 
-    for شماره, هزینه in enumerate(
-        هزینه‌ها,
+    for index, expense in enumerate(
+        expenses,
         1
     ):
 
-        مقدار = int(
-            هزینه["amount"]
+        amount = int(
+            expense["amount"]
         )
 
-        جمع += مقدار
+        total += amount
 
-        متن_خروجی += (
-            f"🔹 {شماره}. {هزینه['title']}\n"
-            f"💵 {مبلغ(مقدار)} تومان\n"
-            f"📅 {هزینه['created_at']}\n\n"
+        result += (
+            f"🔹 {index}. {expense['title']}\n"
+            f"💵 {پول(amount)} تومان\n"
+            f"📅 {expense['created_at']}\n\n"
         )
 
-    متن_خروجی += (
+    result += (
         "━━━━━━━━━━━━━━\n"
-        f"💰 جمع کل: {مبلغ(جمع)} تومان"
+        f"💰 جمع کل: {پول(total)} تومان"
     )
 
-    await update.reply(متن_خروجی)
+    await update.reply(
+        result
+    )
 
 
 # =========================================================
 # افزودن ساکن
 # =========================================================
 
-@app.on_update(
-    filters.commands("افزودن_ساکن")
-)
-async def افزودن_ساکن(client, update: Update):
+async def افزودن_ساکن(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
@@ -612,25 +910,57 @@ async def افزودن_ساکن(client, update: Update):
 
         return
 
-    متن_پیام = متن(update)
+    message = متن(update)
 
-    بخش‌ها = متن_پیام.split(maxsplit=2)
+    parts = message.split(
+        maxsplit=2
+    )
 
-    if len(بخش‌ها) < 3:
+    if len(parts) < 3:
 
         await update.reply(
-            "❌ روش استفاده:\n\n"
-            "/افزودن_ساکن شناسه_کاربر نام و نام_خانوادگی"
+            "❌ روش صحیح:\n\n"
+            "افزودن ساکن شناسه نام و نام خانوادگی"
         )
 
         return
 
-    شناسه = بخش‌ها[1]
+    target = parts[2].split(
+        maxsplit=1
+    )
 
-    نام = بخش‌ها[2]
+    if len(target) < 2:
 
-    db["residents"][شناسه] = {
-        "name": نام,
+        await update.reply(
+            "❌ نام و نام خانوادگی را کامل وارد کنید."
+        )
+
+        return
+
+    # چون فرمت ساده است، برای شناسه و نام بهتر است:
+    # افزودن ساکن 123456 علی رضایی
+
+    pieces = message.split(
+        maxsplit=3
+    )
+
+    if len(pieces) < 4:
+
+        await update.reply(
+            "❌ مثال:\n\n"
+            "افزودن ساکن 123456 علی رضایی"
+        )
+
+        return
+
+    resident_id = pieces[2]
+
+    name = pieces[3]
+
+    db["residents"][
+        resident_id
+    ] = {
+        "name": name,
         "added_at": زمان()
     }
 
@@ -638,8 +968,8 @@ async def افزودن_ساکن(client, update: Update):
 
     await update.reply(
         "✅ ساکن ثبت شد.\n\n"
-        f"👤 نام: {نام}\n"
-        f"🆔 شناسه: {شناسه}"
+        f"👤 نام: {name}\n"
+        f"🆔 شناسه: {resident_id}"
     )
 
 
@@ -647,10 +977,10 @@ async def افزودن_ساکن(client, update: Update):
 # حذف ساکن
 # =========================================================
 
-@app.on_update(
-    filters.commands("حذف_ساکن")
-)
-async def حذف_ساکن(client, update: Update):
+async def حذف_ساکن(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
@@ -662,98 +992,112 @@ async def حذف_ساکن(client, update: Update):
 
         return
 
-    متن_پیام = متن(update)
+    parts = متن(update).split()
 
-    بخش‌ها = متن_پیام.split(maxsplit=1)
-
-    if len(بخش‌ها) < 2:
+    if len(parts) < 3:
 
         await update.reply(
-            "❌ روش استفاده:\n\n"
-            "/حذف_ساکن شناسه_کاربر"
+            "❌ روش صحیح:\n\n"
+            "حذف ساکن شناسه_کاربر"
         )
 
         return
 
-    شناسه = بخش‌ها[1].strip()
+    target = parts[2]
 
-    if شناسه in db["residents"]:
-        del db["residents"][شناسه]
+    if target in db["residents"]:
 
-    save_database(db)
+        del db["residents"][target]
 
-    await update.reply(
-        "✅ ساکن حذف شد."
-    )
+        save_database(db)
+
+        await update.reply(
+            "✅ ساکن حذف شد."
+        )
+
+    else:
+
+        await update.reply(
+            "❌ این ساکن پیدا نشد."
+        )
 
 
 # =========================================================
-# لیست ساکنین
+# نمایش ساکنین
 # =========================================================
 
-@app.on_update(
-    filters.commands("ساکنین")
-)
-async def ساکنین(client, update: Update):
+async def نمایش_ساکنین(
+    client,
+    update
+):
 
     if not db["residents"]:
 
         await update.reply(
-            "👥 هنوز هیچ ساکنی ثبت نشده است."
+            "👥 هنوز ساکنی ثبت نشده است."
         )
 
         return
 
-    خروجی = "👥 **لیست ساکنین ساختمان فدک**\n\n"
+    result = (
+        "👥 لیست ساکنین ساختمان فدک\n\n"
+    )
 
-    for شماره, (شناسه, اطلاعات) in enumerate(
+    for index, (
+        user_id,
+        info
+    ) in enumerate(
         db["residents"].items(),
         1
     ):
 
-        خروجی += (
-            f"{شماره}. {اطلاعات['name']}\n"
-            f"🆔 {شناسه}\n\n"
+        result += (
+            f"{index}. {info['name']}\n"
+            f"🆔 {user_id}\n\n"
         )
 
-    await update.reply(خروجی)
+    await update.reply(
+        result
+    )
 
 
 # =========================================================
 # ثبت پرداخت
 # =========================================================
 
-@app.on_update(
-    filters.commands("پرداخت"),
-    filters.private
-)
-async def پرداخت(client, update: Update):
+async def ثبت_پرداخت(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
-    متن_پیام = متن(update)
+    message = متن(update)
 
-    بخش‌ها = متن_پیام.split(maxsplit=1)
+    name = message[
+        len("پرداخت"):
+    ].strip()
 
-    if len(بخش‌ها) < 2:
+    if not name:
 
         await update.reply(
-            "❌ نام و نام خانوادگی را وارد کنید.\n\n"
+            "❌ نام و نام خانوادگی را بنویسید.\n\n"
             "مثال:\n"
-            "/پرداخت علی رضایی"
+            "پرداخت علی رضایی"
         )
 
         return
 
-    نام = بخش‌ها[1].strip()
+    month = ماه_فعلی()
 
-    ماه = ماه_فعلی()
+    if month not in db["payments"]:
 
-    if ماه not in db["payments"]:
-        db["payments"][ماه] = {}
+        db["payments"][month] = {}
 
-    db["payments"][ماه][user_id] = {
-        "name": نام,
+    db["payments"][month][
+        user_id
+    ] = {
+        "name": name,
         "status": "paid",
         "receipt": False,
         "registered_at": زمان()
@@ -763,74 +1107,94 @@ async def پرداخت(client, update: Update):
 
     await update.reply(
         "✅ پرداخت شما ثبت شد.\n\n"
-        f"👤 نام: {نام}\n"
-        f"📅 ماه: {ماه}\n\n"
-        "📸 حالا رسید واریز را برای بات ارسال کنید."
+        f"👤 نام: {name}\n"
+        f"📅 ماه: {month}\n\n"
+        "📸 لطفاً رسید واریز را نیز برای بات ارسال کنید."
     )
 
 
 # =========================================================
-# گزارش پرداخت‌ها
+# ساخت گزارش
 # =========================================================
 
 def ساخت_گزارش():
 
-    ماه = ماه_فعلی()
+    month = ماه_فعلی()
 
-    پرداخت‌ها = db["payments"].get(
-        ماه,
+    payments = db[
+        "payments"
+    ].get(
+        month,
         {}
     )
 
-    پرداخت_کرده = []
-    پرداخت_نکرده = []
+    paid = []
 
-    for شناسه, اطلاعات in db["residents"].items():
+    unpaid = []
 
-        if شناسه in پرداخت‌ها:
+    for resident_id, info in db[
+        "residents"
+    ].items():
 
-            if پرداخت‌ها[شناسه].get("status") == "paid":
+        if resident_id in payments:
 
-                پرداخت_کرده.append(
-                    پرداخت‌ها[شناسه].get(
+            if payments[
+                resident_id
+            ].get("status") == "paid":
+
+                paid.append(
+                    payments[
+                        resident_id
+                    ].get(
                         "name",
-                        اطلاعات["name"]
+                        info["name"]
                     )
                 )
 
         else:
 
-            پرداخت_نکرده.append(
-                اطلاعات["name"]
+            unpaid.append(
+                info["name"]
             )
 
-    خروجی = (
-        "📊 **گزارش شارژ ساختمان فدک**\n\n"
-        f"📅 ماه: {ماه}\n\n"
-        f"✅ پرداخت کرده‌اند: {len(پرداخت_کرده)} نفر\n"
+    result = (
+        "📊 گزارش شارژ ساختمان فدک\n\n"
+        f"📅 ماه: {month}\n\n"
+        f"✅ پرداخت کرده‌اند: {len(paid)} نفر\n"
     )
 
-    for نام in پرداخت_کرده:
-        خروجی += f"• {نام}\n"
+    if paid:
 
-    خروجی += (
-        f"\n❌ پرداخت نکرده‌اند: {len(پرداخت_نکرده)} نفر\n"
+        for name in paid:
+
+            result += (
+                f"• {name}\n"
+            )
+
+    result += (
+        f"\n❌ پرداخت نکرده‌اند: "
+        f"{len(unpaid)} نفر\n"
     )
 
-    for نام in پرداخت_نکرده:
-        خروجی += f"• {نام}\n"
+    if unpaid:
 
-    return خروجی
+        for name in unpaid:
+
+            result += (
+                f"• {name}\n"
+            )
+
+    return result
 
 
 # =========================================================
 # گزارش
 # =========================================================
 
-@app.on_update(
-    filters.commands("گزارش")
-)
-async def گزارش(client, update: Update):
+async def نمایش_گزارش(
+    client,
+    update
+):
 
     user_id = شناسه_کاربر(update)
 
@@ -848,93 +1212,123 @@ async def گزارش(client, update: Update):
 
 
 # =========================================================
-# پیام‌های عمومی گروه
+# ادمین با ریپلای
 # =========================================================
 
-@app.on_update(
-    filters.text,
-    filters.group
-)
-async def پیام_گروه(client, update: Update):
+async def ادمین_با_ریپلای(
+    client,
+    update
+):
 
-    متن_پیام = متن(update)
+    user_id = شناسه_کاربر(update)
 
-    if متن_پیام in [
-        "دستورات",
-        "دستور",
-        "راهنما"
-    ]:
+    if not مالک_است(user_id):
 
         await update.reply(
-            دستورات
+            "❌ فقط مالک اصلی می‌تواند مدیر اضافه کند."
         )
+
+        return
+
+    message = update.new_message
+
+    reply_id = getattr(
+        message,
+        "reply_to_message_id",
+        None
+    )
+
+    if not reply_id:
+
+        await update.reply(
+            "❌ باید روی پیام شخص موردنظر ریپلای کنید."
+        )
+
+        return
+
+    await update.reply(
+        "⚠️ پیام ریپلای‌شده پیدا شد، "
+        "اما برای گرفتن شناسه صاحب آن پیام باید "
+        "از متد واکشی پیام نسخه نصب‌شده Rubpy استفاده شود."
+    )
 
 
 # =========================================================
-# زمان‌بندی ارسال شارژ
+# زمان‌بندی شارژ
 # =========================================================
 
 async def زمانبندی_شارژ():
 
-    آخرین_ارسال = None
+    last_sent = None
 
     while True:
 
         try:
 
-            امروز = datetime.now()
+            now = datetime.now()
 
-            روز_شارژ = int(
+            day = int(
                 db["charge"]["day"]
             )
 
-            کلید = امروز.strftime("%Y-%m-%d")
+            today = now.strftime(
+                "%Y-%m-%d"
+            )
 
-            if امروز.day == روز_شارژ:
+            if now.day == day:
 
-                if آخرین_ارسال != کلید:
+                if last_sent != today:
 
-                    پیام = (
-                        "🏢 **شارژ ساختمان فدک**\n\n"
+                    message = (
+                        "🏢 شارژ ساختمان فدک\n\n"
                         f"💰 مبلغ: "
-                        f"{مبلغ(db['charge']['amount'])} تومان\n\n"
+                        f"{پول(db['charge']['amount'])} تومان\n\n"
                         "💳 شماره کارت:\n"
                         f"{db['charge']['card']}\n\n"
-                        "📸 بعد از واریز، رسید را در PV بات ارسال کنید.\n"
-                        "👤 همراه رسید نام و نام خانوادگی خود را نیز بفرستید."
+                        "📸 پس از واریز، رسید را "
+                        "در PV بات ارسال کنید.\n"
+                        "👤 نام و نام خانوادگی خود را نیز بفرستید."
                     )
 
-                    for شناسه_گروه, اطلاعات in db["groups"].items():
+                    for group_id, info in db[
+                        "groups"
+                    ].items():
 
-                        if not اطلاعات.get("active"):
+                        if not info.get(
+                            "active"
+                        ):
                             continue
 
                         try:
 
                             await app.send_message(
-                                شناسه_گروه,
-                                پیام
+                                group_id,
+                                message
                             )
 
-                        except Exception as خطا:
+                        except Exception as error:
 
                             print(
-                                "خطا در ارسال شارژ:",
-                                خطا
+                                "خطای ارسال شارژ:",
+                                error
                             )
 
-                    آخرین_ارسال = کلید
+                    last_sent = today
 
-            await asyncio.sleep(3600)
-
-        except Exception as خطا:
-
-            print(
-                "خطا در زمان‌بندی شارژ:",
-                خطا
+            await asyncio.sleep(
+                3600
             )
 
-            await asyncio.sleep(3600)
+        except Exception as error:
+
+            print(
+                "خطای زمان‌بندی:",
+                error
+            )
+
+            await asyncio.sleep(
+                3600
+            )
 
 
 # =========================================================
@@ -943,69 +1337,81 @@ async def زمانبندی_شارژ():
 
 async def گزارش_روز_پنجم():
 
-    آخرین_گزارش = None
+    last_report = None
 
     while True:
 
         try:
 
-            امروز = datetime.now()
+            now = datetime.now()
 
-            کلید = امروز.strftime("%Y-%m-%d")
+            today = now.strftime(
+                "%Y-%m-%d"
+            )
 
-            if امروز.day == 5:
+            if now.day == 5:
 
-                if آخرین_گزارش != کلید:
+                if last_report != today:
 
-                    گزارش_متن = ساخت_گزارش()
+                    report = ساخت_گزارش()
 
-                    مدیران = set()
+                    admins = set()
 
                     if db["owner_id"]:
-                        مدیران.add(
-                            str(db["owner_id"])
+
+                        admins.add(
+                            str(
+                                db["owner_id"]
+                            )
                         )
 
-                    for مدیر in db["admins"]:
-                        مدیران.add(
-                            str(مدیر)
+                    for admin in db[
+                        "admins"
+                    ]:
+
+                        admins.add(
+                            str(admin)
                         )
 
-                    for مدیر in مدیران:
+                    for admin in admins:
 
                         try:
 
                             await app.send_message(
-                                مدیر,
-                                گزارش_متن
+                                admin,
+                                report
                             )
 
-                        except Exception as خطا:
+                        except Exception as error:
 
                             print(
-                                "خطا در ارسال گزارش:",
-                                خطا
+                                "خطای گزارش:",
+                                error
                             )
 
-                    آخرین_گزارش = کلید
+                    last_report = today
 
-            await asyncio.sleep(3600)
-
-        except Exception as خطا:
-
-            print(
-                "خطا در گزارش:",
-                خطا
+            await asyncio.sleep(
+                3600
             )
 
-            await asyncio.sleep(3600)
+        except Exception as error:
+
+            print(
+                "خطای گزارش روز پنجم:",
+                error
+            )
+
+            await asyncio.sleep(
+                3600
+            )
 
 
 # =========================================================
-# اجرای برنامه
+# اجرای زمان‌بندی‌ها
 # =========================================================
 
-async def اجرای_زمانبندی‌ها():
+async def اجرای_زمانبندی():
 
     await asyncio.gather(
         زمانبندی_شارژ(),
@@ -1013,17 +1419,32 @@ async def اجرای_زمانبندی‌ها():
     )
 
 
+# =========================================================
+# اجرای بات
+# =========================================================
+
 if __name__ == "__main__":
 
-    print("===================================")
-    print("🏢 بات ساختمان فدک")
-    print("🚀 در حال اجرا...")
-    print("===================================")
+    print(
+        "================================="
+    )
 
-    حلقه = asyncio.get_event_loop()
+    print(
+        "🏢 بات ساختمان فدک"
+    )
 
-    حلقه.create_task(
-        اجرای_زمانبندی‌ها()
+    print(
+        "🚀 بات در حال اجراست..."
+    )
+
+    print(
+        "================================="
+    )
+
+    loop = asyncio.get_event_loop()
+
+    loop.create_task(
+        اجرای_زمانبندی()
     )
 
     app.run()

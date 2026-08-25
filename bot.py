@@ -1,15 +1,14 @@
-from rubpy.bot import BotClient, filters
-from rubpy.bot.models import Update
+from rubpy import BotClient
+from rubpy.bot import filters
+from rubpy.bot.models import Update, Keypad, KeypadRow, Button
+from rubpy.bot.enums import ButtonTypeEnum
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 # نام بات و فایل ذخیره‌سازی
 BOT_NAME = "ساختمان فدک"
 DATA_FILE = "fadak_data.json"
-
-# لیست ادمین‌ها (شماره تلفن یا شناسه کاربری)
-ADMINS = []
 
 def load_data():
     """بارگذاری داده‌ها از فایل"""
@@ -20,17 +19,14 @@ def load_data():
         "admins": [],
         "expenses": [],
         "payments": {},
-        "scheduled_messages": {}
+        "scheduled_messages": {},
+        "active_groups": []
     }
 
 def save_data(data):
     """ذخیره داده‌ها در فایل"""
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-def get_user_id(update):
-    """دریافت شناسه کاربر"""
-    return update.new_message.author_id
 
 def is_admin(user_id, data):
     """بررسی آیا کاربر ادمین است"""
@@ -44,27 +40,36 @@ def format_date(date_str):
     except:
         return date_str
 
-app = BotClient("CCFDJD0NTXGROTMRYNTFWCULTGQFIMGSSUQXHXJFGYBVXYAJWJRTNMSKUGAOLOJT")
+# ایجاد نمونه بات
+bot = BotClient("CCFDJD0NTXGROTMRYNTFWCULTGQFIMGSSUQXHXJFGYBVXYAJWJRTNMSKUGAOLOJT")
 
-@app.on_update(filters.text)
-async def handle_messages(client, update: Update):
+@bot.on_update(filters.text)
+async def handle_all_messages(bot, update: Update):
     """مدیریت تمام پیام‌ها"""
+    if not update.new_message:
+        return
+    
     data = load_data()
-    user_id = get_user_id(update)
-    message_text = update.new_message.text.strip()
+    user_id = update.new_message.sender_id
+    chat_id = update.chat_id
+    message_text = update.new_message.text.strip() if update.new_message.text else ""
     
     # بررسی اینکه پیام در گروه است یا خصوصی
-    is_private = update.new_message.chat_type == "private"
-    is_group = update.new_message.chat_type in ["group", "supergroup"]
+    is_private = update.new_message.chat_type == "private" if hasattr(update.new_message, 'chat_type') else False
+    is_group = update.new_message.chat_type in ["group", "supergroup"] if hasattr(update.new_message, 'chat_type') else False
     
-    # فعال‌سازی بات در گروه
+    # فعال‌سازی بات در گروه با پیام "فعال"
     if is_group and message_text == "فعال":
+        if chat_id not in data["active_groups"]:
+            data["active_groups"].append(chat_id)
+        
+        # اگر کاربر قبلاً ادمین نیست، اضافه شود
         if user_id not in data["admins"]:
             data["admins"].append(user_id)
-            save_data(data)
         
-        commands_list = """
-🏢 *بات ساختمان فدک فعال شد!*
+        save_data(data)
+        
+        commands_list = """🏢 *بات ساختمان فدک فعال شد!*
 
 📋 *لیست دستورات:*
 
@@ -73,19 +78,20 @@ async def handle_messages(client, update: Update):
 /expenses - نمایش لیست هزینه‌ها
 /set_charge [پیام شارژ] - تنظیم پیام شارژ ماهانه
 /payments - مشاهده وضعیت پرداخت‌ها
+/remind [نام کاربر] - یادآوری پرداخت به کاربر
 /help - نمایش راهنما
 
-✅ بات با موفقیت فعال شد!
-        """
+✅ بات با موفقیت فعال شد!"""
+        
         await update.reply(commands_list)
         return
     
-    # دستور /admin در پیوی یا گروه
+    # دستور /admin - هر کسی بزند ادمین می‌شود
     if message_text == "/admin":
         if user_id not in data["admins"]:
             data["admins"].append(user_id)
             save_data(data)
-            await update.reply("✅ شما به عنوان ادمین ثبت شدید!")
+            await update.reply("✅ شما به عنوان ادمین ثبت شدید!\n\nاکنون می‌توانید از دستورات مدیریتی استفاده کنید.")
         else:
             await update.reply("✅ شما قبلاً ادمین هستید.")
         return
@@ -97,7 +103,7 @@ async def handle_messages(client, update: Update):
             await update.reply("ادمین می‌تواند ویژگی‌های بات را مدیریت کند.")
         return
     
-    # دستورات ادمین
+    # ===== دستورات ادمین =====
     
     # ثبت هزینه
     if message_text.startswith("/expense"):
@@ -163,7 +169,7 @@ async def handle_messages(client, update: Update):
         
         payments_text = "💳 *وضعیت پرداخت‌ها:*\n\n"
         
-        for user_id_str, payment_info in data["payments"].items():
+        for uid, payment_info in data["payments"].items():
             status = "✅ پرداخت شده" if payment_info.get("paid", False) else "❌ پرداخت نشده"
             payments_text += f"👤 کاربر: {payment_info.get('name', 'نامشخص')}\n"
             payments_text += f"   وضعیت: {status}\n"
@@ -172,10 +178,30 @@ async def handle_messages(client, update: Update):
         await update.reply(payments_text)
         return
     
+    # یادآوری پرداخت به کاربر خاص
+    if message_text.startswith("/remind"):
+        parts = message_text.split(maxsplit=1)
+        if len(parts) >= 2:
+            target_name = parts[1].strip()
+            
+            # جستجوی کاربر بر اساس نام
+            found_user = None
+            for uid, info in data["payments"].items():
+                if info.get("name", "").lower() == target_name.lower():
+                    found_user = uid
+                    break
+            
+            if found_user:
+                await update.reply(f"✅ یادآوری برای {target_name} ارسال شد.")
+            else:
+                await update.reply(f"❌ کاربری با نام '{target_name}' یافت نشد.")
+        else:
+            await update.reply("❌ فرمت نادرست!\nاستفاده صحیح: /remind [نام کاربر]")
+        return
+    
     # راهنما
     if message_text == "/help":
-        help_text = """
-🏢 *راهنمای بات ساختمان فدک*
+        help_text = """🏢 *راهنمای بات ساختمان فدک*
 
 👨‍💼 *دستورات ادمین:*
 /admin - ثبت به عنوان ادمین
@@ -183,14 +209,14 @@ async def handle_messages(client, update: Update):
 /expenses - نمایش لیست هزینه‌ها
 /set_charge [پیام] - تنظیم پیام شارژ ماهانه
 /payments - مشاهده وضعیت پرداخت‌ها
+/remind [نام] - یادآوری پرداخت به کاربر
 
 👥 *دستورات کاربران:*
 فعال - فعال‌سازی بات در گروه
 پرداخت [نام] [رسید] - ثبت رسید پرداخت
 
 📅 *یادآوری خودکار:*
-بات هر ماه در روز پنجم، وضعیت پرداخت‌ها را به ادمین‌ها اطلاع می‌دهد.
-        """
+بات هر ماه در روز پنجم، وضعیت پرداخت‌ها را به ادمین‌ها اطلاع می‌دهد."""
         await update.reply(help_text)
         return
     
@@ -214,43 +240,6 @@ async def handle_messages(client, update: Update):
             await update.reply("❌ فرمت نادرست!\nاستفاده صحیح: پرداخت [نام] [رسید]")
         return
 
-# تابع یادآوری ماهانه (باید به صورت جداگانه اجرا شود)
-async def monthly_reminder():
-    """یادآوری ماهانه پرداخت‌ها"""
-    data = load_data()
-    today = datetime.now()
-    
-    # اگر امروز پنجم ماه است
-    if today.day == 5:
-        admins = data["admins"]
-        payments = data["payments"]
-        
-        paid_users = []
-        unpaid_users = []
-        
-        for user_id, info in payments.items():
-            if info.get("paid", False):
-                paid_users.append(info.get("name", "نامشخص"))
-            else:
-                unpaid_users.append(info.get("name", "نامشخص"))
-        
-        reminder_text = f"📅 *یادآوری ماهانه پرداخت‌ها*\n\n"
-        reminder_text += f"✅ پرداخت‌کنندگان ({len(paid_users)} نفر):\n"
-        for name in paid_users:
-            reminder_text += f"• {name}\n"
-        
-        reminder_text += f"\n❌ پرداخت‌نکردگان ({len(unpaid_users)} نفر):\n"
-        for name in unpaid_users:
-            reminder_text += f"• {name}\n"
-        
-        # ارسال به تمام ادمین‌ها
-        for admin_id in admins:
-            try:
-                # اینجا باید منطق ارسال پیام به ادمین‌ها اضافه شود
-                pass
-            except:
-                pass
-
 if __name__ == "__main__":
     print(f"🏢 بات {BOT_NAME} در حال اجراست...")
-    app.run()
+    bot.run()

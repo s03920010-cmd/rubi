@@ -1,1109 +1,332 @@
-import asyncio
-import json
-import os
-from datetime import datetime
-
-
-# ============================================================
-# Rubpy
-# ============================================================
+"""
+بات مدیریت ساختمان فدک
+توسعه دهنده: Developer
+ساخته شده با کتابخانه Rubpy و رعایت استانداردهای API روبیکا
+"""
 
 from rubpy import BotClient
-from rubpy import filters
+from rubpy.bot import filters
+from rubpy.bot.models import Keypad, KeypadRow, Button, Update
+from rubpy.bot.enums import ButtonTypeEnum
+import sqlite3
+import datetime
 
-
-# ============================================================
-# تنظیمات
-# ============================================================
-
+# ==========================================
+# تنظیمات اولیه
+# ==========================================
 BOT_TOKEN = "CCFDJD0NTXGROTMRYNTFWCULTGQFIMGSSUQXHXJFGYBVXYAJWJRTNMSKUGAOLOJT"
-
-OWNER_USERNAME = "radvinhha"
-
-DATABASE_FILE = "database.json"
-
-
-# ============================================================
-# ساخت Bot
-# ============================================================
-
-bot = BotClient(
-    token=BOT_TOKEN,
-    rate_limit=0.5
-)
-
-
-# ============================================================
-# دیتابیس
-# ============================================================
-
-def default_database():
-    return {
-        "bot": {
-            "name": "بات ساختمان فدک",
-            "active": True
-        },
-
-        "owner": {
-            "username": OWNER_USERNAME,
-            "user_id": None
-        },
-
-        "admins": [],
-
-        "users": [],
-
-        "groups": [],
-
-        "bank_cards": [],
-
-        "expenses": [],
-
-        "reminders": []
-    }
-
-
-def create_database():
-    if not os.path.exists(DATABASE_FILE):
-
-        data = default_database()
-
-        with open(
-            DATABASE_FILE,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                data,
-                file,
-                ensure_ascii=False,
-                indent=4
-            )
-
-
-def load_database():
-
-    create_database()
-
-    try:
-
-        with open(
-            DATABASE_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            return json.load(file)
-
-    except Exception:
-
-        data = default_database()
-
-        save_database(data)
-
-        return data
-
-
-def save_database(data):
-
-    temp_file = DATABASE_FILE + ".tmp"
-
-    with open(
-        temp_file,
-        "w",
-        encoding="utf-8"
-    ) as file:
-
-        json.dump(
-            data,
-            file,
-            ensure_ascii=False,
-            indent=4
-        )
-
-    os.replace(
-        temp_file,
-        DATABASE_FILE
-    )
-
-
-# ============================================================
-# ابزارها
-# ============================================================
-
-def normalize(text):
-
-    if not text:
-        return ""
-
-    return (
-        str(text)
-        .strip()
-        .replace("ي", "ی")
-        .replace("ك", "ک")
-        .replace("\u200c", " ")
-    )
-
-
-def get_message(update):
-
-    return getattr(
-        update,
-        "new_message",
-        None
-    )
-
-
-def get_text(update):
-
-    message = get_message(update)
-
-    if not message:
-        return ""
-
-    return normalize(
-        getattr(
-            message,
-            "text",
-            ""
-        )
-    )
-
-
-def get_sender_id(update):
-
-    message = get_message(update)
-
-    if not message:
-        return None
-
-    return getattr(
-        message,
-        "sender_id",
-        None
-    )
-
-
-def get_chat_id(update):
-
-    return getattr(
-        update,
-        "chat_id",
-        None
-    )
-
-
-def format_money(amount):
-
-    try:
-        return f"{int(amount):,}"
-    except Exception:
-        return str(amount)
-
-
-# ============================================================
-# کاربر
-# ============================================================
-
-def save_user(update):
-
-    user_id = get_sender_id(update)
-
-    if not user_id:
-        return
-
-    data = load_database()
-
-    if user_id not in data["users"]:
-
-        data["users"].append(user_id)
-
-        save_database(data)
-
-
-# ============================================================
-# مالک
-# ============================================================
-
-def is_owner(update):
-
-    data = load_database()
-
-    sender_id = get_sender_id(update)
-
-    owner_id = data["owner"].get("user_id")
-
-    if owner_id:
-
-        return str(sender_id) == str(owner_id)
-
-    return False
-
-
-def register_owner(update):
-
-    sender_id = get_sender_id(update)
-
-    if not sender_id:
-        return False
-
-    data = load_database()
-
-    owner_id = data["owner"].get("user_id")
-
-    if owner_id is None:
-
-        data["owner"]["user_id"] = sender_id
-
-        save_database(data)
-
-        return True
-
-    return str(owner_id) == str(sender_id)
-
-
-# ============================================================
-# ادمین
-# ============================================================
-
-def is_admin(update):
-
-    if is_owner(update):
-        return True
-
-    sender_id = get_sender_id(update)
-
-    if not sender_id:
-        return False
-
-    data = load_database()
-
-    return any(
-        str(admin["user_id"]) == str(sender_id)
-        for admin in data["admins"]
-    )
-
-
-def add_admin(user_id, username=""):
-
-    data = load_database()
-
-    for admin in data["admins"]:
-
-        if str(admin["user_id"]) == str(user_id):
-            return False
-
-    data["admins"].append({
-        "user_id": user_id,
-        "username": username
-    })
-
-    save_database(data)
-
-    return True
-
-
-# ============================================================
-# گروه
-# ============================================================
-
-def register_group(update):
-
-    chat_id = get_chat_id(update)
-
-    if not chat_id:
-        return
-
-    data = load_database()
-
-    if chat_id not in data["groups"]:
-
-        data["groups"].append(chat_id)
-
-        save_database(data)
-
-
-# ============================================================
-# منوی اصلی
-# ============================================================
-
-def main_menu():
-
-    return (
-        "🏢 بات ساختمان فدک\n\n"
-
-        "درود 👋\n\n"
-
-        "این بات مخصوص ساختمان فدک است.\n\n"
-
-        "📌 امکانات:\n"
-        "💰 مشاهده هزینه‌های ساختمان\n"
-        "💳 مشاهده شماره کارت\n"
-        "🔔 یادآوری‌ها\n\n"
-
-        "برای مشاهده کل هزینه‌های ساختمان:\n"
-        "🔹 هزینه\n\n"
-
-        "دستورات مدیریت:\n"
-        "⚙️ مدیریت"
-    )
-
-
-def admin_menu():
-
-    return (
-        "⚙️ پنل مدیریت ساختمان فدک\n\n"
-
-        "دستورات:\n\n"
-
-        "👤 افزودن ادمین\n"
-        "فرمت:\n"
-        "افزودن ادمین USER_ID\n\n"
-
-        "💳 افزودن شماره کارت\n"
-        "فرمت:\n"
-        "افزودن شماره کارت\n"
-        "عنوان\n"
-        "شماره کارت\n\n"
-
-        "💰 افزودن هزینه\n"
-        "فرمت:\n"
-        "افزودن هزینه\n"
-        "عنوان\n"
-        "مبلغ\n"
-        "توضیحات\n\n"
-
-        "🔔 افزودن یادآوری\n"
-        "فرمت:\n"
-        "افزودن یادآوری\n"
-        "روز\n"
-        "عنوان\n"
-        "متن\n\n"
-
-        "🟢 فعال سازی\n"
-        "🔴 غیرفعال سازی"
-    )
-
-
-# ============================================================
-# START
-# ============================================================
-
-@bot.on_update(
-    filters.private,
-    filters.commands("start")
-)
-async def start_handler(client, update):
-
-    save_user(update)
-
-    # اولین /start مالک را ثبت می‌کند
-    register_owner(update)
-
-    data = load_database()
-
+DB_NAME = "fadak_building.db"
+
+bot = BotClient(token=BOT_TOKEN)
+
+# دیکشنری برای مدیریت مراحل دریافت اطلاعات (State Machine)
+user_states = {}
+
+# ==========================================
+# مدیریت پایگاه داده (SQLite)
+# ==========================================
+def init_db():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS admins 
+                      (user_id TEXT PRIMARY KEY, role TEXT)''')
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS charge_messages 
+                      (id INTEGER PRIMARY KEY, text TEXT, card_number TEXT)''')
+    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS expenses 
+                      (id INTEGER PRIMARY KEY AUTOINCREMENT, amount REAL, description TEXT, registered_by TEXT, date TEXT)''')
+    
+    conn.commit()
+    conn.close()
+
+def is_admin(user_id: str) -> bool:
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT role FROM admins WHERE user_id = ?", (user_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result is not None
+
+def add_admin(user_id: str, role: str = "admin"):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR REPLACE INTO admins (user_id, role) VALUES (?, ?)", (user_id, role))
+    conn.commit()
+    conn.close()
+
+def save_charge_message(text: str, card_number: str):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM charge_messages")
+    cursor.execute("INSERT INTO charge_messages (text, card_number) VALUES (?, ?)", (text, card_number))
+    conn.commit()
+    conn.close()
+
+def get_charge_message():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT text, card_number FROM charge_messages LIMIT 1")
+    result = cursor.fetchone()
+    conn.close()
+    return result
+
+def add_expense(amount: float, description: str, user_id: str):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    date_str = datetime.datetime.now().strftime("%Y/%m/%d %H:%M")
+    cursor.execute("INSERT INTO expenses (amount, description, registered_by, date) VALUES (?, ?, ?, ?)", 
+                   (amount, description, user_id, date_str))
+    conn.commit()
+    conn.close()
+
+def get_all_expenses():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+    cursor.execute("SELECT amount, description, registered_by, date FROM expenses ORDER BY id DESC")
+    result = cursor.fetchall()
+    conn.close()
+    return result
+
+init_db()
+
+# ==========================================
+# توابع ساخت دکمه‌های شیشه‌ای (Inline Keypad)
+# ==========================================
+def get_main_group_keypad():
+    return Keypad(rows=[
+        KeypadRow(buttons=[
+            Button(id="show_charge", type=ButtonTypeEnum.SIMPLE, button_text="💳 مشاهده شارژ ماهانه")
+        ]),
+        KeypadRow(buttons=[
+            Button(id="admin_panel", type=ButtonTypeEnum.SIMPLE, button_text="⚙️ پنل مدیریت (ادمین/کالک)")
+        ])
+    ])
+
+def get_admin_panel_keypad():
+    return Keypad(rows=[
+        KeypadRow(buttons=[
+            Button(id="set_charge", type=ButtonTypeEnum.SIMPLE, button_text="📝 تنظیم پیام شارژ"),
+            Button(id="add_expense", type=ButtonTypeEnum.SIMPLE, button_text="💰 ثبت هزینه جدید")
+        ]),
+        KeypadRow(buttons=[
+            Button(id="list_expenses", type=ButtonTypeEnum.SIMPLE, button_text="📊 مشاهده تمام هزینه‌ها")
+        ])
+    ])
+
+def get_manage_message_keypad(chat_id: str, message_id: str):
+    return Keypad(rows=[
+        KeypadRow(buttons=[
+            Button(id=f"del_msg:{chat_id}:{message_id}", type=ButtonTypeEnum.SIMPLE, button_text="🗑 حذف این پیام")
+        ])
+    ])
+
+# ==========================================
+# هندلرهای اصلی بات
+# ==========================================
+
+# 1. فعال‌سازی در گروه با پیام متنی "فعال"
+@bot.on_update(filters.group, filters.text("فعال"))
+async def activate_in_group(bot: BotClient, update: Update):
+    user_id = update.new_message.sender_id
+    add_admin(user_id, "admin")
+    
     text = (
-        "🏢 **بات ساختمان فدک**\n\n"
+        "✅ **بات ساختمان فدک با موفقیت فعال شد!**\n\n"
+        "👤 شما به عنوان مدیر سیستم ثبت شدید.\n"
+        "از منوی دکمه‌ای زیر برای مدیریت استفاده کنید:"
+    )
+    await update.reply(text, inline_keypad=get_main_group_keypad())
 
-        "درود 👋\n\n"
+# 2. فعال‌سازی ادمین در پیوی با دستور /admin
+@bot.on_update(filters.private, filters.commands("admin"))
+async def admin_pv_activation(bot: BotClient, update: Update):
+    user_id = update.new_message.sender_id
+    add_admin(user_id, "admin")
+    
+    text = "👤 **شما با موفقیت به عنوان ادمین بات ثبت شدید!**\nپنل مدیریت در زیر برای شما باز شد:"
+    await update.reply(text, inline_keypad=get_admin_panel_keypad())
 
-        "این بات برای ساختمان فدک ساخته شده است.\n\n"
-
-        "💰 برای مشاهده کل هزینه‌های ساختمان:\n"
-        "**هزینه**\n\n"
-
-        "💳 برای مشاهده شماره کارت:\n"
-        "**شماره کارت**\n\n"
-
-        "🔔 یادآوری‌های ساختمان نیز توسط بات ارسال می‌شوند.\n"
+# 3. مدیریت پیام با ریپلای و نوشتن "ادمین"
+@bot.on_update(filters.group, filters.replied, filters.text("ادمین"))
+async def manage_replied_message(bot: BotClient, update: Update):
+    user_id = update.new_message.sender_id
+    
+    if not is_admin(user_id):
+        await update.reply("❌ شما دسترسی ادمین برای مدیریت پیام‌ها را ندارید!")
+        return
+    
+    replied_msg_id = update.new_message.reply_to_message_id
+    chat_id = update.chat_id
+    
+    await update.reply(
+        "🛠 **گزینه‌های مدیریت پیام انتخاب‌شده:**",
+        inline_keypad=get_manage_message_keypad(chat_id, replied_msg_id)
     )
 
-    if data["bot"]["active"]:
-
-        text += "\n🟢 وضعیت: فعال"
-
+# 4. پردازش کلیک روی دکمه‌های شیشه‌ای (Inline Buttons)
+@bot.on_update(filters.has_aux_data)
+async def handle_inline_buttons(bot: BotClient, update: Update):
+    # تشخیص نوع آپدیت (کلیک روی دکمه شیشه‌ای معمولاً به صورت inline_message می‌آید)
+    if hasattr(update, 'inline_message') and update.inline_message:
+        user_id = update.inline_message.sender_id
+        chat_id = update.inline_message.chat_id
+        btn_id = update.inline_message.aux_data.button_id
+    elif hasattr(update, 'new_message') and update.new_message and update.new_message.aux_data and update.new_message.aux_data.button_id:
+        user_id = update.new_message.sender_id
+        chat_id = update.chat_id
+        btn_id = update.new_message.aux_data.button_id
     else:
-
-        text += "\n🔴 وضعیت: غیرفعال"
-
-    if is_admin(update):
-
-        text += (
-            "\n\n⚙️ برای ورود به مدیریت:\n"
-            "**مدیریت**"
-        )
-
-    await update.reply(text)
-
-
-# ============================================================
-# پیام‌های خصوصی
-# ============================================================
-
-@bot.on_update(filters.private)
-async def private_handler(client, update):
-
-    save_user(update)
-
-    text = get_text(update)
-
-    if not text:
         return
 
-    # --------------------------------------------------------
-    # مدیریت
-    # --------------------------------------------------------
-
-    if text == "مدیریت":
-
-        if not is_admin(update):
-
-            await update.reply(
-                "⛔ شما اجازه دسترسی به پنل مدیریت را ندارید."
-            )
-
+    # --- حذف پیام ---
+    if btn_id.startswith("del_msg:"):
+        if not is_admin(user_id):
+            await update.reply("❌ دسترسی غیرمجاز!")
             return
+        
+        parts = btn_id.split(":")
+        if len(parts) == 3:
+            target_chat_id = parts[1]
+            target_msg_id = parts[2]
+            try:
+                await bot.delete_message(target_chat_id, target_msg_id)
+                await update.reply("✅ پیام با موفقیت حذف شد.")
+            except Exception:
+                await update.reply("❌ خطا در حذف پیام. اطمینان حاصل کنید بات در آن گروه ادمین است.")
 
+    # --- پنل مدیریت ---
+    elif btn_id == "admin_panel":
+        if not is_admin(user_id):
+            await update.reply("❌ فقط ادمین‌ها و کالک‌ها دسترسی به این بخش را دارند!")
+            return
+        await update.reply("⚙️ به پنل مدیریت خوش آمدید. یکی از گزینه‌ها را انتخاب کنید:", inline_keypad=get_admin_panel_keypad())
+
+    # --- تنظیم پیام شارژ ---
+    elif btn_id == "set_charge":
+        if not is_admin(user_id):
+            await update.reply("❌ دسترسی غیرمجاز!")
+            return
+        user_states[user_id] = {"step": "waiting_charge_text"}
+        await update.reply("📝 لطفاً **متن پیام یادآوری شارژ** را ارسال کنید:\n(مثال: ساکنین محترم، لطفاً شارژ ماه جاری را پرداخت نمایید.)")
+
+    # --- ثبت هزینه ---
+    elif btn_id == "add_expense":
+        if not is_admin(user_id):
+            await update.reply("❌ فقط ادمین‌ها و کالک‌ها می‌توانند هزینه ثبت کنند!")
+            return
+        user_states[user_id] = {"step": "waiting_expense_amount"}
+        await update.reply("💰 لطفاً **مبلغ هزینه** را به عدد (تومان) وارد کنید:\n(مثال: 500000)")
+
+    # --- لیست تمام هزینه‌ها ---
+    elif btn_id == "list_expenses":
+        if not is_admin(user_id):
+            await update.reply("❌ دسترسی غیرمجاز!")
+            return
+        
+        expenses = get_all_expenses()
+        if not expenses:
+            await update.reply("📭 هنوز هیچ هزینه‌ای در سیستم ثبت نشده است.")
+            return
+        
+        msg = "📊 **لیست کامل هزینه‌های ساختمان فدک:**\n\n"
+        total = 0
+        for exp in expenses:
+            total += exp[0]
+            msg += f"🔹 {exp[0]:,.0f} ت | {exp[1]}\n   👤 {exp[2]} | 📅 {exp[3]}\n"
+        
+        msg += f"\n💵 **جمع کل:** {total:,.0f} تومان"
+        
+        # تقسیم پیام به بخش‌های 4000 کاراکتری برای جلوگیری از خطای طولانی بودن پیام در روبیکا
+        chunks = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+        for i, chunk in enumerate(chunks):
+            await update.reply(chunk)
+
+    # --- نمایش اطلاعات شارژ ---
+    elif btn_id == "show_charge":
+        charge_data = get_charge_message()
+        if not charge_data:
+            await update.reply("📭 هنوز پیام شارژی توسط مدیریت تنظیم نشده است.")
+            return
+        
+        msg = (
+            "💳 **اطلاعات پرداخت شارژ ساختمان فدک**\n\n"
+            f"📝 {charge_data[0]}\n\n"
+            f"💳 **شماره کارت:**\n`{charge_data[1]}`\n\n"
+            "⚠️ لطفاً پس از واریز، تصویر فیش را برای مدیریت ارسال کنید."
+        )
+        await update.reply(msg)
+
+
+# 5. هندلر دریافت متن برای مراحل ثبت اطلاعات (State Management)
+@bot.on_update(filters.text)
+async def handle_state_inputs(bot: BotClient, update: Update):
+    user_id = update.new_message.sender_id
+    text = update.new_message.text.strip()
+    
+    # اگر کاربر در حالت ثبت اطلاعات نباشد، خارج شو
+    if user_id not in user_states:
+        return
+    
+    user_state = user_states[user_id]
+    
+    # مرحله 1: دریافت متن پیام شارژ
+    if user_state.get("step") == "waiting_charge_text":
+        user_states[user_id]["text"] = text
+        user_states[user_id]["step"] = "waiting_charge_card"
+        await update.reply("💳 عالی! اکنون **شماره کارت** مقصد را ارسال کنید:\n(مثال: 6037-9911-1234-5678)")
+        return
+
+    # مرحله 2: دریافت شماره کارت شارژ
+    if user_state.get("step") == "waiting_charge_card":
+        card_number = text
+        charge_text = user_states[user_id].get("text", "")
+        
+        save_charge_message(charge_text, card_number)
+        del user_states[user_id]
+        
         await update.reply(
-            admin_menu()
+            "✅ **پیام شارژ با موفقیت تنظیم و ذخیره شد!**",
+            inline_keypad=get_admin_panel_keypad()
         )
-
         return
 
-    # --------------------------------------------------------
-    # فعال سازی
-    # --------------------------------------------------------
-
-    if text == "فعال سازی":
-
-        if not is_admin(update):
-            return
-
-        data = load_database()
-
-        data["bot"]["active"] = True
-
-        save_database(data)
-
-        await update.reply(
-            "🟢 **بات ساختمان فدک فعال شد.**\n\n"
-            "این بات برای ساختمان فدک است.\n\n"
-            "برای مشاهده کل هزینه‌های ساختمان:\n"
-            "**هزینه**"
-        )
-
-        return
-
-    # --------------------------------------------------------
-    # غیرفعال سازی
-    # --------------------------------------------------------
-
-    if text == "غیرفعال سازی":
-
-        if not is_admin(update):
-            return
-
-        data = load_database()
-
-        data["bot"]["active"] = False
-
-        save_database(data)
-
-        await update.reply(
-            "🔴 بات ساختمان فدک غیرفعال شد."
-        )
-
-        return
-
-    # --------------------------------------------------------
-    # افزودن ادمین
-    # --------------------------------------------------------
-
-    if text.startswith("افزودن ادمین"):
-
-        if not is_owner(update):
-
-            await update.reply(
-                "⛔ فقط مالک اصلی می‌تواند ادمین اضافه کند."
-            )
-
-            return
-
-        parts = text.split()
-
-        if len(parts) < 3:
-
-            await update.reply(
-                "❌ فرمت صحیح:\n\n"
-                "افزودن ادمین USER_ID"
-            )
-
-            return
-
-        user_id = parts[2]
-
-        if add_admin(user_id):
-
-            await update.reply(
-                "✅ ادمین با موفقیت اضافه شد."
-            )
-
-        else:
-
-            await update.reply(
-                "⚠️ این کاربر از قبل ادمین است."
-            )
-
-        return
-
-    # --------------------------------------------------------
-    # افزودن شماره کارت
-    # --------------------------------------------------------
-
-    if text.startswith("افزودن شماره کارت"):
-
-        if not is_admin(update):
-            return
-
-        lines = text.splitlines()
-
-        if len(lines) < 3:
-
-            await update.reply(
-                "❌ فرمت صحیح:\n\n"
-                "افزودن شماره کارت\n"
-                "عنوان\n"
-                "شماره کارت"
-            )
-
-            return
-
-        title = lines[1].strip()
-        card_number = lines[2].strip()
-
-        data = load_database()
-
-        data["bank_cards"].append({
-
-            "title": title,
-
-            "card_number": card_number,
-
-            "created_at":
-                datetime.now().strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
-        })
-
-        save_database(data)
-
-        await update.reply(
-            "✅ شماره کارت ثبت شد."
-        )
-
-        return
-
-    # --------------------------------------------------------
-    # شماره کارت
-    # --------------------------------------------------------
-
-    if text in (
-        "شماره کارت",
-        "شماره کارت ها",
-        "شماره کارت‌ها"
-    ):
-
-        data = load_database()
-
-        cards = data.get(
-            "bank_cards",
-            []
-        )
-
-        if not cards:
-
-            await update.reply(
-                "💳 هنوز شماره کارتی ثبت نشده است."
-            )
-
-            return
-
-        result = [
-            "💳 **شماره کارت‌های ساختمان فدک**\n"
-        ]
-
-        for card in cards:
-
-            result.append(
-                f"🔹 {card['title']}\n"
-                f"💳 `{card['card_number']}`\n"
-            )
-
-        await update.reply(
-            "\n".join(result)
-        )
-
-        return
-
-    # --------------------------------------------------------
-    # افزودن هزینه
-    # --------------------------------------------------------
-
-    if text.startswith("افزودن هزینه"):
-
-        if not is_admin(update):
-            return
-
-        lines = text.splitlines()
-
-        if len(lines) < 3:
-
-            await update.reply(
-                "❌ فرمت صحیح:\n\n"
-                "افزودن هزینه\n"
-                "عنوان\n"
-                "مبلغ\n"
-                "توضیحات"
-            )
-
-            return
-
-        title = lines[1].strip()
-
+    # مرحله 1: دریافت مبلغ هزینه
+    if user_state.get("step") == "waiting_expense_amount":
         try:
-
-            amount = int(
-                lines[2]
-                .replace(",", "")
-                .replace("٬", "")
-                .replace("تومان", "")
-                .strip()
-            )
-
+            amount = float(text.replace(",", ""))
+            user_states[user_id]["amount"] = amount
+            user_states[user_id]["step"] = "waiting_expense_desc"
+            await update.reply(f"📝 مبلغ {amount:,.0f} تومان ثبت شد. اکنون **توضیحات هزینه** را بنویسید:\n(مثال: تعمیر آسانسور)")
         except ValueError:
+            await update.reply("❌ مبلغ وارد شده معتبر نیست! لطفاً فقط عدد وارد کنید (مثال: 500000)")
+        return
 
-            await update.reply(
-                "❌ مبلغ واردشده صحیح نیست."
-            )
-
-            return
-
-        description = ""
-
-        if len(lines) >= 4:
-
-            description = "\n".join(
-                lines[3:]
-            ).strip()
-
-        data = load_database()
-
-        data["expenses"].append({
-
-            "title": title,
-
-            "amount": amount,
-
-            "description": description,
-
-            "date":
-                datetime.now().strftime(
-                    "%Y-%m-%d"
-                ),
-
-            "added_by":
-                get_sender_id(update)
-        })
-
-        save_database(data)
-
+    # مرحله 2: دریافت توضیحات هزینه
+    if user_state.get("step") == "waiting_expense_desc":
+        description = text
+        amount = user_states[user_id].get("amount", 0)
+        
+        add_expense(amount, description, user_id)
+        del user_states[user_id]
+        
         await update.reply(
-            "✅ هزینه با موفقیت ثبت شد."
+            f"✅ **هزینه با موفقیت ثبت شد!**\n\n"
+            f"💰 مبلغ: {amount:,.0f} تومان\n"
+            f"📝 توضیحات: {description}\n"
+            f"📅 تاریخ: {datetime.datetime.now().strftime('%Y/%m/%d')}",
+            inline_keypad=get_admin_panel_keypad()
         )
-
-        return
-
-    # --------------------------------------------------------
-    # افزودن یادآوری
-    # --------------------------------------------------------
-
-    if text.startswith("افزودن یادآوری"):
-
-        if not is_admin(update):
-            return
-
-        lines = text.splitlines()
-
-        if len(lines) < 4:
-
-            await update.reply(
-                "❌ فرمت صحیح:\n\n"
-                "افزودن یادآوری\n"
-                "روز\n"
-                "عنوان\n"
-                "متن"
-            )
-
-            return
-
-        day = lines[1].strip()
-        title = lines[2].strip()
-
-        reminder_text = "\n".join(
-            lines[3:]
-        ).strip()
-
-        data = load_database()
-
-        data["reminders"].append({
-
-            "day": day,
-
-            "title": title,
-
-            "text": reminder_text,
-
-            "last_sent": None
-        })
-
-        save_database(data)
-
-        await update.reply(
-            f"🔔 یادآوری روز {day} ثبت شد."
-        )
-
-        return
-
-    # --------------------------------------------------------
-    # هزینه
-    # --------------------------------------------------------
-
-    if text in (
-        "هزینه",
-        "هزینه ها",
-        "هزینه‌ها",
-        "هزینه کل"
-    ):
-
-        data = load_database()
-
-        expenses = data.get(
-            "expenses",
-            []
-        )
-
-        if not expenses:
-
-            await update.reply(
-                "🏢 **ساختمان فدک**\n\n"
-                "💰 هنوز هیچ هزینه‌ای ثبت نشده است."
-            )
-
-            return
-
-        total = 0
-
-        result = [
-            "🏢 **ساختمان فدک**\n",
-            "💰 **هزینه‌ها:**\n"
-        ]
-
-        for expense in expenses:
-
-            amount = int(
-                expense.get(
-                    "amount",
-                    0
-                )
-            )
-
-            total += amount
-
-            result.append(
-                f"🔹 {expense.get('title', '-')}\n"
-                f"💵 {format_money(amount)} تومان\n"
-                f"📅 {expense.get('date', '-')}\n"
-            )
-
-        result.append(
-            "━━━━━━━━━━━━\n"
-            f"💰 **کل هزینه‌ها: "
-            f"{format_money(total)} تومان**"
-        )
-
-        await update.reply(
-            "\n".join(result)
-        )
-
         return
 
 
-# ============================================================
-# گروه
-# ============================================================
-
-@bot.on_update(filters.group)
-async def group_handler(client, update):
-
-    register_group(update)
-
-    text = get_text(update)
-
-    if not text:
-        return
-
-    data = load_database()
-
-    # --------------------------------------------------------
-    # اگر بات غیرفعال باشد
-    # --------------------------------------------------------
-
-    if not data["bot"]["active"]:
-        return
-
-    # --------------------------------------------------------
-    # هزینه
-    # --------------------------------------------------------
-
-    if text in (
-        "هزینه",
-        "هزینه ها",
-        "هزینه‌ها",
-        "هزینه کل",
-        "هزینه های ساختمان",
-        "هزینه‌های ساختمان"
-    ):
-
-        expenses = data.get(
-            "expenses",
-            []
-        )
-
-        if not expenses:
-
-            await update.reply(
-                "🏢 ساختمان فدک\n\n"
-                "💰 هنوز هیچ هزینه‌ای ثبت نشده است."
-            )
-
-            return
-
-        total = 0
-
-        result = [
-            "🏢 **ساختمان فدک**\n",
-            "💰 **گزارش هزینه‌ها**\n"
-        ]
-
-        for expense in expenses:
-
-            amount = int(
-                expense.get(
-                    "amount",
-                    0
-                )
-            )
-
-            total += amount
-
-            result.append(
-                f"🔹 {expense.get('title', '-')}\n"
-                f"💵 {format_money(amount)} تومان\n"
-                f"📅 {expense.get('date', '-')}\n"
-            )
-
-        result.append(
-            "━━━━━━━━━━━━\n"
-            f"💰 **کل هزینه‌ها: "
-            f"{format_money(total)} تومان**"
-        )
-
-        await update.reply(
-            "\n".join(result)
-        )
-
-        return
-
-    # --------------------------------------------------------
-    # شماره کارت
-    # --------------------------------------------------------
-
-    if text in (
-        "شماره کارت",
-        "شماره کارت ها",
-        "شماره کارت‌ها"
-    ):
-
-        cards = data.get(
-            "bank_cards",
-            []
-        )
-
-        if not cards:
-
-            await update.reply(
-                "💳 هنوز شماره کارتی ثبت نشده است."
-            )
-
-            return
-
-        result = [
-            "💳 **شماره کارت ساختمان فدک**\n"
-        ]
-
-        for card in cards:
-
-            result.append(
-                f"🔹 {card['title']}\n"
-                f"💳 `{card['card_number']}`\n"
-            )
-
-        await update.reply(
-            "\n".join(result)
-        )
-
-        return
-
-
-# ============================================================
-# سیستم یادآوری
-# ============================================================
-
-async def reminder_loop():
-
-    while True:
-
-        try:
-
-            data = load_database()
-
-            if not data["bot"]["active"]:
-
-                await asyncio.sleep(60)
-
-                continue
-
-            now = datetime.now()
-
-            current_day = str(
-                now.day
-            )
-
-            today = now.strftime(
-                "%Y-%m-%d"
-            )
-
-            changed = False
-
-            for reminder in data.get(
-                "reminders",
-                []
-            ):
-
-                if str(
-                    reminder.get("day")
-                ) != current_day:
-
-                    continue
-
-                if reminder.get(
-                    "last_sent"
-                ) == today:
-
-                    continue
-
-                message = (
-                    "🔔 **یادآوری ساختمان فدک**\n\n"
-                    f"📌 {reminder.get('title', '')}\n\n"
-                    f"{reminder.get('text', '')}"
-                )
-
-                # ارسال به تمام گروه‌هایی که
-                # بات در آن‌ها پیام دیده است
-                for chat_id in data.get(
-                    "groups",
-                    []
-                ):
-
-                    try:
-
-                        await bot.send_message(
-                            chat_id,
-                            message
-                        )
-
-                    except Exception as error:
-
-                        print(
-                            f"Reminder error: {error}"
-                        )
-
-                reminder["last_sent"] = today
-
-                changed = True
-
-            if changed:
-
-                save_database(data)
-
-        except Exception as error:
-
-            print(
-                f"Reminder loop error: {error}"
-            )
-
-        await asyncio.sleep(60)
-
-
-# ============================================================
+# ==========================================
 # اجرای بات
-# ============================================================
-
-async def main():
-
-    create_database()
-
-    print()
-    print("====================================")
-    print("       🏢 ساختمان فدک")
-    print("====================================")
-    print("🟢 Bot starting...")
-    print("📁 database.json checked")
-    print("====================================")
-    print()
-
-    reminder_task = asyncio.create_task(
-        reminder_loop()
-    )
-
-    try:
-
-        await bot.run()
-
-    except KeyboardInterrupt:
-
-        print(
-            "\n🔴 Bot stopped."
-        )
-
-    finally:
-
-        reminder_task.cancel()
-
-        try:
-
-            await reminder_task
-
-        except asyncio.CancelledError:
-
-            pass
-
-
-# ============================================================
-# Start
-# ============================================================
-
+# ==========================================
 if __name__ == "__main__":
-
-    asyncio.run(main())
+    print("🏢 بات ساختمان فدک در حال اجراست...")
+    print("💡 برای فعال‌سازی در گروه، پیام «فعال» را ارسال کنید.")
+    print("💡 برای تعریف ادمین در پیوی، دستور /admin را ارسال کنید.")
+    
+    bot.run()
